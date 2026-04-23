@@ -17,15 +17,27 @@ wakes when sessions start, gets visibly impatient when an approval prompt is
 waiting, and lets you approve or deny right from the device.
 
 <p align="center">
-  <img src="docs/device.jpg" alt="M5StickC Plus running the buddy firmware" width="500">
+  <img src="docs/device.jpg" alt="ESP32-S3-BOX-3B running the buddy firmware" width="500">
 </p>
+
+## This fork
+
+This fork ports the upstream M5StickC Plus reference firmware to the
+ESP32-S3-BOX-3B. The BLE protocol stays the same; the changes are in the
+hardware layer, screen layout, and input handling. See
+[docs/esp32-s3-box-3b-port.md](docs/esp32-s3-box-3b-port.md) for the
+fork-specific delta from upstream.
 
 ## Hardware
 
 The firmware targets ESP32 with the Arduino framework. As written, it
-depends on the M5StickCPlus library for its display, IMU, and button
-drivers—so you'll need that board, or a fork that swaps those drivers for
-your own pin layout.
+targets the ESP32-S3-BOX-3B using LovyanGFX/TFT_eSPI-compatible display
+surfaces, a small local board compatibility layer, the onboard IMU, the
+front capacitive touch surface, and the red-ring touch key as the secondary
+button.
+
+The upstream project targeted M5StickC Plus. This fork keeps the app logic
+and BLE protocol intact, but replaces the board driver assumptions.
 
 ## Flashing
 
@@ -61,25 +73,24 @@ first connect; grant it.
 
 Once paired, the bridge auto-reconnects whenever both sides are awake.
 
-If discovery isn't finding the stick:
+If discovery isn't finding the device:
 
 - Make sure it's awake (any button press)
-- Check the stick's settings menu → bluetooth is on
+- Check the device's settings menu → bluetooth is on
 
 ## Controls
 
 |                         | Normal               | Pet         | Info        | Approval    |
 | ----------------------- | -------------------- | ----------- | ----------- | ----------- |
-| **A** (front)           | next screen          | next screen | next screen | **approve** |
-| **B** (right)           | scroll transcript    | next page   | next page   | **deny**    |
-| **Hold A**              | menu                 | menu        | menu        | menu        |
-| **Power** (left, short) | toggle screen off    |             |             |             |
-| **Power** (left, ~6s)   | hard power off       |             |             |             |
+| **A / left tap**        | next screen          | next screen | next screen | **approve** |
+| **B / right tap**       | scroll transcript    | next page   | next page   | **deny**    |
+| **Hold A / left touch** | menu                 | menu        | menu        | menu        |
+| **Menu → sleep**        | toggle screen off    |             |             |             |
 | **Shake**               | dizzy                |             |             | —           |
 | **Face-down**           | nap (energy refills) |             |             |             |
 
 The screen auto-powers-off after 30s of no interaction (kept on while an
-approval prompt is up). Any button press wakes it.
+approval prompt is up). Any button or touch input wakes it.
 
 ## ASCII pets
 
@@ -91,7 +102,7 @@ Choice persists to NVS.
 
 If you want a custom GIF character instead of an ASCII buddy, drag a
 character pack folder onto the drop target in the Hardware Buddy window. The
-app streams it over BLE and the stick switches to GIF mode live. **Settings
+app streams it over BLE and the device switches to GIF mode live. **Settings
 → delete char** reverts to ASCII mode.
 
 A character pack is a folder with `manifest.json` and 96px-wide GIFs:
@@ -144,23 +155,25 @@ If you're iterating on a character and would rather skip the BLE round-trip,
 | `sleep`     | bridge not connected        | eyes closed, slow breathing |
 | `idle`      | connected, nothing urgent   | blinking, looking around    |
 | `busy`      | sessions actively running   | sweating, working           |
-| `attention` | approval pending            | alert, **LED blinks**       |
+| `attention` | approval pending            | alert, impatient motion     |
 | `celebrate` | level up (every 50K tokens) | confetti, bouncing          |
-| `dizzy`     | you shook the stick         | spiral eyes, wobbling       |
+| `dizzy`     | you shook the device        | spiral eyes, wobbling       |
 | `heart`     | approved in under 5s        | floating hearts             |
 
 ## Project layout
 
 ```
 src/
-  main.cpp       — loop, state machine, UI screens
-  buddy.cpp      — ASCII species dispatch + render helpers
-  buddies/       — one file per species, seven anim functions each
-  ble_bridge.cpp — Nordic UART service, line-buffered TX/RX
-  character.cpp  — GIF decode + render
-  data.h         — wire protocol, JSON parse
-  xfer.h         — folder push receiver
-  stats.h        — NVS-backed stats, settings, owner, species choice
+  main.cpp          — loop, state machine, UI screens
+  board_compat.*   — ESP32-S3-BOX-3B compatibility shim
+  display_compat.h — shared display surface alias
+  buddy.cpp         — ASCII species dispatch + render helpers
+  buddies/          — one file per species, seven anim functions each
+  ble_bridge.cpp    — Nordic UART service, line-buffered TX/RX
+  character.cpp     — GIF decode + render
+  data.h            — wire protocol, JSON parse
+  xfer.h            — folder push receiver
+  stats.h           — NVS-backed stats, settings, owner, species choice
 characters/      — example GIF character packs
 tools/           — generators and converters
 ```

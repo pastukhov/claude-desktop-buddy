@@ -6,12 +6,12 @@
 // and defines its 7 state functions.
 
 // Geometry — shared layout for all species
-extern const int BUDDY_X_CENTER;
-extern const int BUDDY_CANVAS_W;
-extern const int BUDDY_Y_BASE;
-extern const int BUDDY_Y_OVERLAY;
-extern const int BUDDY_CHAR_W;
-extern const int BUDDY_CHAR_H;
+extern int BUDDY_X_CENTER;
+extern int BUDDY_CANVAS_W;
+extern int BUDDY_Y_BASE;
+extern int BUDDY_Y_OVERLAY;
+extern int BUDDY_CHAR_W;
+extern int BUDDY_CHAR_H;
 
 // Common colors species can use freely
 extern const uint16_t BUDDY_BG;
