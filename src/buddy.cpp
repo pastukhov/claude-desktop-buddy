@@ -39,7 +39,12 @@ static DisplaySurface* _tgt = &spr;
 // and re-center per line so the padding doesn't push ink off-screen.
 static uint8_t _scale = 1;
 
+static void useBuddyFont() {
+  _tgt->setFont(&fonts::Font0);
+}
+
 void buddyPrintLine(const char* line, int yPx, uint16_t color, int xOff) {
+  useBuddyFont();
   int len = strlen(line);
   if (_scale > 1) {
     while (len && line[len-1] == ' ') len--;

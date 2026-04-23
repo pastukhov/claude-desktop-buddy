@@ -25,7 +25,7 @@ struct TamaState {
 // Three modes, checked in priority order:
 //   demo   → auto-cycle fake scenarios every 8s, ignore live data
 //   live   → JSON arrived in the last 10s over USB or BT
-//   asleep → no data, all zeros, "No Claude connected"
+//   asleep → no data, all zeros, "Claude отключён"
 // ---------------------------------------------------------------------------
 
 static uint32_t _lastLiveMs = 0;
@@ -36,9 +36,9 @@ static uint32_t _demoNext   = 0;
 
 struct _Fake { const char* n; uint8_t t,r,w; bool c; uint32_t tok; };
 static const _Fake _FAKES[] = {
-  {"asleep",0,0,0,false,0}, {"one idle",1,0,0,false,12000},
-  {"busy",4,3,0,false,89000}, {"attention",2,1,1,false,45000},
-  {"completed",1,0,0,true,142000},
+  {"сон",0,0,0,false,0}, {"одна",1,0,0,false,12000},
+  {"работа",4,3,0,false,89000}, {"запрос",2,1,1,false,45000},
+  {"готово",1,0,0,true,142000},
 };
 
 inline void dataSetDemo(bool on) {
@@ -59,7 +59,7 @@ inline bool dataBtActive() {
 inline const char* dataScenarioName() {
   if (_demoMode) return _FAKES[_demoIdx].n;
   if (dataConnected()) return dataBtActive() ? "bt" : "usb";
-  return "none";
+  return "нет";
 }
 
 // Set true once the bridge sends a time sync — until then the RTC may
@@ -153,7 +153,7 @@ inline void dataPoll(TamaState* out) {
     out->sessionsTotal=s.t; out->sessionsRunning=s.r; out->sessionsWaiting=s.w;
     out->recentlyCompleted=s.c; out->tokensToday=s.tok; out->lastUpdated=now;
     out->connected = true;
-    snprintf(out->msg, sizeof(out->msg), "demo: %s", s.n);
+    snprintf(out->msg, sizeof(out->msg), "демо: %s", s.n);
     return;
   }
 
@@ -178,7 +178,7 @@ inline void dataPoll(TamaState* out) {
   if (!out->connected) {
     out->sessionsTotal=0; out->sessionsRunning=0; out->sessionsWaiting=0;
     out->recentlyCompleted=false; out->lastUpdated=now;
-    strncpy(out->msg, "No Claude connected", sizeof(out->msg)-1);
+    strncpy(out->msg, "Claude отключён", sizeof(out->msg)-1);
     out->msg[sizeof(out->msg)-1]=0;
   }
 }

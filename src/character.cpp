@@ -348,6 +348,7 @@ void characterTick() {
     const char* line = ts.frames[textFrame];
     int len = strlen(line);
     int tw = len * 12;                                    // size-2 glyph width
+    spr.setFont(&fonts::Font0);
     spr.setTextColor(pal.body, pal.bg);
     spr.setTextSize(2);
     spr.setCursor((spr.width() - tw) / 2, cy - 8);

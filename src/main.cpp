@@ -5,6 +5,7 @@
 #include "data.h"
 #include "buddy.h"
 #include "buddy_common.h"
+#include "ui_cyr_font.h"
 
 TFT_eSprite spr = TFT_eSprite(&M5.Lcd);
 
@@ -25,6 +26,7 @@ int W = 240;
 int H = 320;
 int CX = 120;
 int CY_BASE = 160;
+static void useUiFont(DisplaySurface* tgt = &spr);
 const int LED_PIN = -1;          // no dedicated status LED on the BOX-3B body
 
 // Colors used across multiple UI surfaces
@@ -34,7 +36,7 @@ const uint16_t UI_GREEN = 0x07E0;
 const uint16_t UI_RED   = 0xF800;
 
 enum PersonaState { P_SLEEP, P_IDLE, P_BUSY, P_ATTENTION, P_CELEBRATE, P_DIZZY, P_HEART };
-const char* stateNames[] = { "sleep", "idle", "busy", "attention", "celebrate", "dizzy", "heart" };
+const char* stateNames[] = { "сон", "ожидание", "работа", "внимание", "праздник", "голова кругом", "сердце" };
 
 TamaState    tama;
 PersonaState baseState   = P_SLEEP;
@@ -164,17 +166,17 @@ void applyDisplayMode() {
   characterInvalidate();  // redraws character on next tick (text mode path)
 }
 
-const char* menuItems[] = { "settings", "sleep", "info", "about", "demo", "close" };
+const char* menuItems[] = { "настройки", "сон", "справка", "о прошивке", "демо", "закрыть" };
 const uint8_t MENU_N = 6;
 
 bool    settingsOpen = false;
 uint8_t settingsSel  = 0;
-const char* settingsItems[] = { "brightness", "sound", "bluetooth", "wifi", "led", "transcript", "clock rot", "ascii pet", "reset", "back" };
+const char* settingsItems[] = { "яркость", "звук", "блютуз", "вайфай", "свет", "журнал", "часы", "текст-пет", "сброс", "назад" };
 const uint8_t SETTINGS_N = 10;
 
 bool    resetOpen = false;
 uint8_t resetSel  = 0;
-const char* resetItems[] = { "delete char", "factory reset", "back" };
+const char* resetItems[] = { "удалить пета", "сбросить всё", "назад" };
 const uint8_t RESET_N = 3;
 static uint32_t resetConfirmUntil = 0;
 static uint8_t  resetConfirmIdx = 0xFF;
@@ -205,7 +207,7 @@ static void applySetting(uint8_t idx) {
   settingsSave();
 }
 
-// Tap-twice confirm: first tap arms (label flips to "really?"), second
+// Tap-twice confirm: first tap arms (label flips to "точно?"), second
 // within 3s executes. Scrolling away clears the arm.
 static void applyReset(uint8_t idx) {
   uint32_t now = millis();
@@ -279,6 +281,7 @@ static void drawMenuHints(const Palette& p, int mx, int mw, int hy,
 }
 
 static void drawSettings() {
+  useUiFont();
   const Palette& p = characterPalette();
   int mw = min(W - 20, 196), mh = 20 + SETTINGS_N * 16 + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
@@ -299,9 +302,9 @@ static void drawSettings() {
       spr.printf("%u/4", brightLevel);
     } else if (i >= 1 && i <= 5) {
       spr.setTextColor(vals[i-1] ? UI_GREEN : p.textDim, PANEL);
-      spr.print(vals[i-1] ? " on" : "off");
+      spr.print(vals[i-1] ? " вкл" : "выкл");
     } else if (i == 6) {
-      static const char* const RN[] = { "auto", "port", "land" };
+      static const char* const RN[] = { "авто", "порт", "альб" };
       spr.print(RN[s.clockRot]);
     } else if (i == 7) {
       uint8_t total = buddySpeciesCount() + (gifAvailable ? 1 : 0);
@@ -309,10 +312,11 @@ static void drawSettings() {
       spr.printf("%u/%u", pos, total);
     }
   }
-  drawMenuHints(p, mx, mw, my + mh - 14, "Next", "Change");
+  drawMenuHints(p, mx, mw, my + mh - 14, "Далее", "Изм.");
 }
 
 static void drawReset() {
+  useUiFont();
   const Palette& p = characterPalette();
   int mw = min(W - 20, 196), mh = 20 + RESET_N * 16 + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
@@ -327,7 +331,7 @@ static void drawReset() {
     bool armed = (i == resetConfirmIdx) &&
                  (int32_t)(millis() - resetConfirmUntil) < 0;
     if (armed) spr.setTextColor(HOT, PANEL);
-    spr.print(armed ? "really?" : resetItems[i]);
+    spr.print(armed ? "точно?" : resetItems[i]);
   }
   drawMenuHints(p, mx, mw, my + mh - 14);
 }
@@ -349,6 +353,7 @@ void menuConfirm() {
 }
 
 void drawMenu() {
+  useUiFont();
   const Palette& p = characterPalette();
   int mw = min(W - 20, 196), mh = 20 + MENU_N * 16 + MENU_HINT_H;
   int mx = (W - mw) / 2, my = (H - mh) / 2;
@@ -361,7 +366,7 @@ void drawMenu() {
     spr.setCursor(mx + 8, my + 10 + i * 16);
     spr.print(sel ? "> " : "  ");
     spr.print(menuItems[i]);
-    if (i == 4) spr.print(dataDemo() ? "  on" : "  off");
+    if (i == 4) spr.print(dataDemo() ? "  вкл" : "  выкл");
   }
   drawMenuHints(p, mx, mw, my + mh - 14);
 }
@@ -530,9 +535,9 @@ static void clockUpdateOrient() {
 // Portrait paints the upper ~110px to the sprite; pet renders below.
 // Landscape draws direct to LCD with rotation — sprite stays untouched.
 static const char* const MON[] = {
-  "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
+  "Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"
 };
-static const char* const DOW[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+static const char* const DOW[] = {"Вс","Пн","Вт","Ср","Чт","Пт","Сб"};
 
 static uint8_t clockDow() { return _clkDt.WeekDay % 7; }
 static void drawClock() {
@@ -540,10 +545,11 @@ static void drawClock() {
   char hm[6]; snprintf(hm, sizeof(hm), "%02u:%02u", _clkTm.Hours, _clkTm.Minutes);
   char ss[4]; snprintf(ss, sizeof(ss), ":%02u", _clkTm.Seconds);
   uint8_t mi = (_clkDt.Month >= 1 && _clkDt.Month <= 12) ? _clkDt.Month - 1 : 0;
-  char dl[8]; snprintf(dl, sizeof(dl), "%s %02u", MON[mi], _clkDt.Date);
+  char dl[12]; snprintf(dl, sizeof(dl), "%s %02u", MON[mi], _clkDt.Date);
 
   if (clockOrient == 0) {
     paintedOrient = 0;
+    useUiFont();
     // Bottom half — buddy naturally lives at y=0..82, GIF peeks at top
     // via peek mode. Clearing from 90 leaves both untouched.
     spr.fillRect(0, 90, W, H - 90, p.bg);
@@ -567,8 +573,9 @@ static void drawClock() {
   // for nothing. Gate on the second changing (or full repaint).
   if (repaint || _clkTm.Seconds != lastSec) {
     lastSec = _clkTm.Seconds;
-    char wdl[12]; snprintf(wdl, sizeof(wdl), "%s %s %02u", DOW[clockDow()], MON[mi], _clkDt.Date);
+    char wdl[18]; snprintf(wdl, sizeof(wdl), "%s %s %02u", DOW[clockDow()], MON[mi], _clkDt.Date);
     char ssl[3]; snprintf(ssl, sizeof(ssl), "%02u", _clkTm.Seconds);
+    useUiFont(&M5.Lcd);
     M5.Lcd.setTextDatum(MC_DATUM);
     M5.Lcd.setTextSize(3); M5.Lcd.setTextColor(p.text, p.bg);    M5.Lcd.drawString(hm, 170, 42);
     M5.Lcd.setTextSize(2); M5.Lcd.setTextColor(p.textDim, p.bg); M5.Lcd.drawString(ssl, 170, 72);
@@ -631,14 +638,19 @@ static constexpr float UI_TEXT = 1.45f;
 static constexpr float UI_TEXT_SMALL = 1.2f;
 static constexpr int UI_LH = 15;
 
+static void useUiFont(DisplaySurface* tgt) {
+  tgt->setFont(&UiCyr12);
+}
+
 // Persistent screen-level title row ("INFO  n/3") matching the PET header,
 // then a per-page section label below it. The fixed title is the cue that
 // B cycles pages here just like it does on PET.
 static void _infoHeader(const Palette& p, int& y, const char* section, uint8_t page) {
+  useUiFont();
   int x = uiPadX();
   spr.setTextSize(UI_TEXT_SMALL);
   spr.setTextColor(p.text, p.bg);
-  spr.setCursor(x, y); spr.print("Info");
+  spr.setCursor(x, y); spr.print("Инфо");
   spr.setTextColor(p.textDim, p.bg);
   spr.setCursor(W - uiPadX() - 24, y); spr.printf("%u/%u", page + 1, INFO_PAGES);
   y += 16;
@@ -649,12 +661,13 @@ static void _infoHeader(const Palette& p, int& y, const char* section, uint8_t p
 
 void drawPasskey() {
   const Palette& p = characterPalette();
+  useUiFont();
   spr.fillSprite(p.bg);
   spr.setTextSize(UI_TEXT_SMALL);
   spr.setTextColor(p.textDim, p.bg);
   spr.setTextDatum(MC_DATUM);
-  spr.drawString("BLUETOOTH PAIRING", W / 2, 48);
-  spr.drawString("enter on desktop", W / 2, H - 44);
+  spr.drawString("СОПРЯЖЕНИЕ BLUETOOTH", W / 2, 48);
+  spr.drawString("введите на компьютере", W / 2, H - 44);
   spr.setTextSize(3.2f);
   spr.setTextColor(p.text, p.bg);
   char b[8]; snprintf(b, sizeof(b), "%06lu", (unsigned long)blePasskey());
@@ -664,6 +677,7 @@ void drawPasskey() {
 
 void drawInfo() {
   const Palette& p = characterPalette();
+  useUiFont();
   spr.fillSprite(p.bg);
   spr.setTextSize(UI_TEXT_SMALL);
   int x = uiPadX();
@@ -682,48 +696,48 @@ void drawInfo() {
   };
 
   if (infoPage == 0) {
-    _infoHeader(p, y, "ABOUT", infoPage);
+    _infoHeader(p, y, "О ПЕТЕ", infoPage);
     spr.setTextColor(p.textDim, p.bg);
-    ln("I watch your Claude desktop sessions.");
-    ln("I sleep when nothing's happening,");
-    ln("wake when work starts, and get");
-    ln("impatient when approvals pile up.");
+    ln("Я слежу за сессиями Claude.");
+    ln("Сплю, когда всё спокойно,");
+    ln("просыпаюсь при работе");
+    ln("и нервничаю из-за запросов.");
     y += 10;
     spr.setTextColor(p.text, p.bg);
-    ln("Press A on a prompt to approve");
-    ln("right from the device.");
+    ln("Нажмите A на запросе,");
+    ln("чтобы разрешить с устройства.");
     y += 10;
     spr.setTextColor(p.textDim, p.bg);
-    ln("18 species. Settings > ascii pet");
-    ln("cycles between GIF and ASCII.");
+    ln("18 видов. Настройки > текст-пет");
+    ln("переключает GIF и ASCII.");
 
   } else if (infoPage == 1) {
-    _infoHeader(p, y, "BUTTONS", infoPage);
-    spr.setTextColor(p.text, p.bg);    ln("A / left tap");
-    spr.setTextColor(p.textDim, p.bg); ln("  next screen, approve prompt"); y += 4;
-    spr.setTextColor(p.text, p.bg);    ln("B / right tap");
-    spr.setTextColor(p.textDim, p.bg); ln("  next page, deny prompt"); y += 4;
-    spr.setTextColor(p.text, p.bg);    ln("hold A / left touch");
-    spr.setTextColor(p.textDim, p.bg); ln("  open menu"); y += 4;
-    spr.setTextColor(p.text, p.bg);    ln("menu sleep");
-    spr.setTextColor(p.textDim, p.bg); ln("  backlight off, any input wakes");
+    _infoHeader(p, y, "КНОПКИ", infoPage);
+    spr.setTextColor(p.text, p.bg);    ln("A / левый тап");
+    spr.setTextColor(p.textDim, p.bg); ln("  экран, разрешить запрос"); y += 4;
+    spr.setTextColor(p.text, p.bg);    ln("B / правый тап");
+    spr.setTextColor(p.textDim, p.bg); ln("  страница, отклонить"); y += 4;
+    spr.setTextColor(p.text, p.bg);    ln("удержать A / левый тап");
+    spr.setTextColor(p.textDim, p.bg); ln("  открыть меню"); y += 4;
+    spr.setTextColor(p.text, p.bg);    ln("меню: сон");
+    spr.setTextColor(p.textDim, p.bg); ln("  экран гаснет, ввод будит");
 
   } else if (infoPage == 2) {
     _infoHeader(p, y, "CLAUDE", infoPage);
-    kv("sessions", "%u", tama.sessionsTotal);
-    kv("running", "%u", tama.sessionsRunning);
-    kv("waiting", "%u", tama.sessionsWaiting);
-    kv("state", "%s", stateNames[activeState]);
+    kv("сессии", "%u", tama.sessionsTotal);
+    kv("работает", "%u", tama.sessionsRunning);
+    kv("ждёт", "%u", tama.sessionsWaiting);
+    kv("состояние", "%s", stateNames[activeState]);
     y += 8;
-    spr.setTextColor(p.text, p.bg); ln("LINK");
+    spr.setTextColor(p.text, p.bg); ln("СВЯЗЬ");
     spr.setTextColor(p.textDim, p.bg);
-    ln("via       %s", dataScenarioName());
-    ln("ble       %s", !bleConnected() ? "-" : bleSecure() ? "encrypted" : "OPEN");
+    ln("канал     %s", dataScenarioName());
+    ln("ble       %s", !bleConnected() ? "-" : bleSecure() ? "шифр." : "ОТКР");
     uint32_t age = (millis() - tama.lastUpdated) / 1000;
-    ln("last msg  %lus", (unsigned long)age);
+    ln("посл.     %lus", (unsigned long)age);
 
   } else if (infoPage == 3) {
-    _infoHeader(p, y, "DEVICE", infoPage);
+    _infoHeader(p, y, "УСТРОЙСТВО", infoPage);
     float ax, ay, az, gx, gy, gz;
     M5.Imu.getAccelData(&ax, &ay, &az);
     M5.Imu.getGyroData(&gx, &gy, &gz);
@@ -745,8 +759,8 @@ void drawInfo() {
     spr.setTextSize(1.0f);
     spr.setTextColor(full ? UI_GREEN : (charging ? HOT : p.textDim), p.bg);
     spr.setCursor(x + 64, y + 4);
-    if (vBat_mV > 0) spr.print(full ? "full" : (charging ? "charging" : (usb ? "usb" : "battery")));
-    else spr.print(usb ? "powered" : "external");
+    if (vBat_mV > 0) spr.print(full ? "полон" : (charging ? "заряд" : (usb ? "usb" : "бат.")));
+    else spr.print(usb ? "питание" : "внешн.");
     y += 14;
 
     const int leftX = x;
@@ -765,31 +779,31 @@ void drawInfo() {
     };
 
     spr.setTextColor(p.body, p.bg);
-    spr.setCursor(leftX, ly); spr.print("POWER");
-    spr.setCursor(rightX, ry); spr.print("MOTION");
+    spr.setCursor(leftX, ly); spr.print("ПИТАНИЕ");
+    spr.setCursor(rightX, ry); spr.print("ДАТЧИКИ");
     ly += deviceLh;
     ry += deviceLh;
 
     if (vBat_mV > 0) {
-      kvDevice(leftX, ly, "bat", "%d.%02dV", vBat_mV/1000, (vBat_mV%1000)/10);
-      kvDevice(leftX, ly, "cur", "%+dmA", iBat_mA);
+      kvDevice(leftX, ly, "бат", "%d.%02dV", vBat_mV/1000, (vBat_mV%1000)/10);
+      kvDevice(leftX, ly, "ток", "%+dmA", iBat_mA);
     } else {
-      kvDevice(leftX, ly, "bat", "n/a");
-      kvDevice(leftX, ly, "cur", "n/a");
+      kvDevice(leftX, ly, "бат", "нет");
+      kvDevice(leftX, ly, "ток", "нет");
     }
     if (usb) kvDevice(leftX, ly, "vin", "%d.%02dV", vBus_mV/1000, (vBus_mV%1000)/10);
     else kvDevice(leftX, ly, "vin", "-");
     uint32_t up = millis() / 1000;
-    kvDevice(leftX, ly, "up", "%luh%02lum", up / 3600, (up / 60) % 60);
+    kvDevice(leftX, ly, "ап", "%luh%02lum", up / 3600, (up / 60) % 60);
     kvDevice(leftX, ly, "heap", "%uKB", ESP.getFreeHeap() / 1024);
     kvDevice(leftX, ly, "br", "%u/4", brightLevel);
-    kvDevice(leftX, ly, "bt", "%s", settings().bt ? (dataBtActive() ? "linked" : "on") : "off");
+    kvDevice(leftX, ly, "bt", "%s", settings().bt ? (dataBtActive() ? "связь" : "вкл") : "выкл");
     kvDevice(leftX, ly, "usb", "%s", debugUsbPower ? "1" : "0");
     kvDevice(leftX, ly, "rtc", "%s", debugRtcValid ? "1" : "0");
 
     kvDevice(rightX, ry, "clk", "%s", clockOrient == 0 ? "port" : (clockOrient == 1 ? "a" : "b"));
     kvDevice(rightX, ry, "run", "%s", debugClocking ? "1" : "0");
-    kvDevice(rightX, ry, "down", "%s", debugFaceDown ? "1" : "0");
+    kvDevice(rightX, ry, "низ", "%s", debugFaceDown ? "1" : "0");
     kvDevice(rightX, ry, "fdf", "%d", debugFaceDownFrames);
     kvDevice(rightX, ry, "ax", "%.2f", ax);
     kvDevice(rightX, ry, "ay", "%.2f", ay);
@@ -805,7 +819,7 @@ void drawInfo() {
     spr.setTextColor(linked ? UI_GREEN : (settings().bt ? HOT : p.textDim), p.bg);
     spr.setTextSize(2.2f);
     spr.setCursor(x, y);
-    spr.print(linked ? "linked" : (settings().bt ? "discover" : "off"));
+    spr.print(linked ? "связь" : (settings().bt ? "поиск" : "выкл"));
     spr.setTextSize(UI_TEXT);
     y += 24;
 
@@ -821,35 +835,35 @@ void drawInfo() {
 
     if (linked) {
       uint32_t age = (millis() - tama.lastUpdated) / 1000;
-      ln("last msg  %lus", (unsigned long)age);
+      ln("посл.     %lus", (unsigned long)age);
     } else if (settings().bt) {
       spr.setTextColor(p.text, p.bg);
-      ln("TO PAIR");
+      ln("КАК ПОДКЛЮЧИТЬ");
       spr.setTextColor(p.textDim, p.bg);
-      ln("Open Claude desktop");
-      ln("> Developer");
-      ln("> Hardware Buddy");
+      ln("Откройте Claude desktop");
+      ln("> Разработчик");
+      ln("> Аппаратный пет");
       y += 4;
-      ln("auto-connects via BLE");
+      ln("далее автоподключение BLE");
     }
 
   } else {
-    _infoHeader(p, y, "CREDITS", infoPage);
+    _infoHeader(p, y, "АВТОРЫ", infoPage);
     spr.setTextColor(p.textDim, p.bg);
-    ln("made by");
+    ln("сделал");
     y += 4;
     spr.setTextColor(p.text, p.bg);
     ln("Felix Rieseberg");
     y += 12;
     spr.setTextColor(p.textDim, p.bg);
-    ln("source");
+    ln("исходники");
     y += 4;
     spr.setTextColor(p.text, p.bg);
     ln("github.com/anthropics");
     ln("/claude-desktop-buddy");
     y += 12;
     spr.setTextColor(p.textDim, p.bg);
-    ln("hardware");
+    ln("железо");
     y += 4;
     ln("ESP32-S3-BOX-3B");
     ln("ESP32-S3 + ILI9342");
@@ -893,6 +907,7 @@ static uint8_t wrapInto(const char* in, char out[][24], uint8_t maxRows, uint8_t
 
 static void drawApproval() {
   const Palette& p = characterPalette();
+  useUiFont();
   const int AREA = 108;
   const int x = uiPadX();
   spr.fillRect(0, H - AREA, W, AREA, p.bg);
@@ -903,7 +918,7 @@ static void drawApproval() {
   spr.setCursor(x, H - AREA + 6);
   uint32_t waited = (millis() - promptArrivedMs) / 1000;
   if (waited >= 10) spr.setTextColor(HOT, p.bg);
-  spr.printf("approve? %lus", (unsigned long)waited);
+  spr.printf("разрешить? %lus", (unsigned long)waited);
 
   // Size 2 only if it fits one line (~10 chars at 12px on 135px screen)
   int toolLen = strlen(tama.promptTool);
@@ -927,14 +942,14 @@ static void drawApproval() {
   if (responseSent) {
     spr.setTextColor(p.textDim, p.bg);
     spr.setCursor(x, H - 18);
-    spr.print("sent...");
+    spr.print("отправлено...");
   } else {
     spr.setTextColor(UI_GREEN, p.bg);
     spr.setCursor(x, H - 18);
-    spr.print("A: approve");
+    spr.print("A: да");
     spr.setTextColor(HOT, p.bg);
     spr.setCursor(W - uiPadX() - 56, H - 18);
-    spr.print("B: deny");
+    spr.print("B: нет");
   }
 }
 
@@ -952,6 +967,7 @@ static void tinyHeart(int x, int y, bool filled, uint16_t col) {
 }
 
 static void drawPetStats(const Palette& p) {
+  useUiFont();
   const int TOP = 70;
   const int x = uiPadX();
   const int right = W - uiPadX();
@@ -961,13 +977,13 @@ static void drawPetStats(const Palette& p) {
   int y = TOP + 18;
 
   spr.setTextColor(p.textDim, p.bg);
-  spr.setCursor(x, y - 2); spr.print("mood");
+  spr.setCursor(x, y - 2); spr.print("настр.");
   uint8_t mood = statsMoodTier();
   uint16_t moodCol = (mood >= 3) ? UI_RED : (mood >= 2) ? HOT : p.textDim;
   for (int i = 0; i < 4; i++) tinyHeart(barX + i * 18, y + 2, i < mood, moodCol);
 
   y += 24;
-  spr.setCursor(x, y - 2); spr.print("fed");
+  spr.setCursor(x, y - 2); spr.print("сытость");
   uint8_t fed = statsFedProgress();
   for (int i = 0; i < 10; i++) {
     int px = barX - 10 + i * 12;
@@ -976,7 +992,7 @@ static void drawPetStats(const Palette& p) {
   }
 
   y += 24;
-  spr.setCursor(x, y - 2); spr.print("energy");
+  spr.setCursor(x, y - 2); spr.print("энергия");
   uint8_t en = statsEnergyTier();
   uint16_t enCol = (en >= 4) ? 0x07FF : (en >= 2) ? 0xFFE0 : HOT;
   for (int i = 0; i < 5; i++) {
@@ -988,29 +1004,30 @@ static void drawPetStats(const Palette& p) {
   y += 28;
   spr.fillRoundRect(x, y - 2, 52, 14, 3, p.body);
   spr.setTextColor(p.bg, p.body);
-  spr.setCursor(x + 8, y + 1); spr.printf("Lv %u", stats().level);
+  spr.setCursor(x + 8, y + 1); spr.printf("Ур %u", stats().level);
 
   int col2 = W / 2 + 10;
   y += 24;
   spr.setTextColor(p.textDim, p.bg);
   spr.setCursor(x, y);
-  spr.printf("approved %u", stats().approvals);
+  spr.printf("разреш. %u", stats().approvals);
   spr.setCursor(col2, y);
-  spr.printf("denied   %u", stats().denials);
+  spr.printf("отказ   %u", stats().denials);
   uint32_t nap = stats().napSeconds;
   spr.setCursor(x, y + 12);
-  spr.printf("napped   %luh%02lum", nap/3600, (nap/60)%60);
+  spr.printf("сон     %luh%02lum", nap/3600, (nap/60)%60);
   auto tokFmt = [&](const char* label, uint32_t v, int yPx) {
     spr.setCursor(col2, yPx);
     if (v >= 1000000)   spr.printf("%s%lu.%luM", label, v/1000000, (v/100000)%10);
     else if (v >= 1000) spr.printf("%s%lu.%luK", label, v/1000, (v/100)%10);
     else                spr.printf("%s%lu", label, v);
   };
-  tokFmt("tokens ", stats().tokens, y + 12);
-  tokFmt("today  ", tama.tokensToday, y + 24);
+  tokFmt("токены ", stats().tokens, y + 12);
+  tokFmt("сегодня", tama.tokensToday, y + 24);
 }
 
 static void drawPetHowTo(const Palette& p) {
+  useUiFont();
   const int TOP = 70;
   const int x = uiPadX();
   const int col2 = W / 2 + 8;
@@ -1022,30 +1039,31 @@ static void drawPetHowTo(const Palette& p) {
   };
   int y2 = y;
 
-  ln(x, y, p.body,    "MOOD");
-  ln(x, y, p.textDim, " approve fast = up");
-  ln(x, y, p.textDim, " deny lots = down");
+  ln(x, y, p.body,    "НАСТРОЕНИЕ");
+  ln(x, y, p.textDim, " быстрые A = лучше");
+  ln(x, y, p.textDim, " частые нет = хуже");
   y += 6;
-  ln(x, y, p.body,    "FED");
-  ln(x, y, p.textDim, " 50K tokens =");
-  ln(x, y, p.textDim, " level up + confetti");
+  ln(x, y, p.body,    "СЫТОСТЬ");
+  ln(x, y, p.textDim, " 50K ток. =");
+  ln(x, y, p.textDim, " +уровень, конфетти");
   y += 6;
-  ln(x, y, p.body,    "ENERGY");
-  ln(x, y, p.textDim, " face-down to nap");
-  ln(x, y, p.textDim, " wakes back to full");
+  ln(x, y, p.body,    "ЭНЕРГИЯ");
+  ln(x, y, p.textDim, " вниз = сон");
+  ln(x, y, p.textDim, " после сна: 5/5");
 
-  ln(col2, y2, p.body,    "DEVICE");
-  ln(col2, y2, p.textDim, " idle 30s = screen off");
-  ln(col2, y2, p.textDim, " any input = wake");
+  ln(col2, y2, p.body,    "УСТРОЙСТВО");
+  ln(col2, y2, p.textDim, " 30с = экран выкл.");
+  ln(col2, y2, p.textDim, " ввод = проснуться");
   y2 += 6;
-  ln(col2, y2, p.body,    "INPUT");
-  ln(col2, y2, p.textDim, " A / left = screens");
-  ln(col2, y2, p.textDim, " B / right = page");
-  ln(col2, y2, p.textDim, " hold A = menu");
+  ln(col2, y2, p.body,    "ВВОД");
+  ln(col2, y2, p.textDim, " A / слева = экраны");
+  ln(col2, y2, p.textDim, " B / справа = страницы");
+  ln(col2, y2, p.textDim, " удержать A = меню");
 }
 
 void drawPet() {
   const Palette& p = characterPalette();
+  useUiFont();
   int y = 70;
 
   if (petPage == 0) drawPetStats(p);
@@ -1056,7 +1074,7 @@ void drawPet() {
   spr.setTextColor(p.text, p.bg);
   spr.setCursor(uiPadX(), y + 2);
   if (ownerName()[0]) {
-    spr.printf("%s's %s", ownerName(), petName());
+    spr.printf("%s: %s", ownerName(), petName());
   } else {
     spr.print(petName());
   }
@@ -1068,6 +1086,7 @@ void drawPet() {
 void drawHUD() {
   if (tama.promptId[0]) { drawApproval(); return; }
   const Palette& p = characterPalette();
+  useUiFont();
   const int SHOW = 3, LH = 12, WIDTH = min(28, max(18, (W - 16) / 9));
   const int AREA = SHOW * LH + 4;
   spr.fillRect(0, H - AREA, W, AREA, p.bg);
@@ -1154,20 +1173,21 @@ void setup() {
 
   {
     const Palette& p = characterPalette();
+    useUiFont();
     spr.fillSprite(p.bg);
     spr.setTextDatum(MC_DATUM);
     spr.setTextSize(2.4f);
     if (ownerName()[0]) {
       char line[40];
-      snprintf(line, sizeof(line), "%s's", ownerName());
+      snprintf(line, sizeof(line), "%s", ownerName());
       spr.setTextColor(p.text, p.bg);   spr.drawString(line, W/2, H/2 - 12);
       spr.setTextColor(p.body, p.bg);   spr.drawString(petName(), W/2, H/2 + 12);
     } else {
       // First boot, no owner pushed yet — say hi.
-      spr.setTextColor(p.body, p.bg);   spr.drawString("Hello!", W/2, H/2 - 12);
+      spr.setTextColor(p.body, p.bg);   spr.drawString("Привет!", W/2, H/2 - 12);
       spr.setTextSize(UI_TEXT_SMALL);
       spr.setTextColor(p.textDim, p.bg);
-      spr.drawString("a buddy appears", W/2, H/2 + 12);
+      spr.drawString("пет появился", W/2, H/2 + 12);
     }
     spr.setTextDatum(TL_DATUM); spr.setTextSize(1);
     spr.pushSprite(0, 0);
@@ -1412,13 +1432,14 @@ void loop() {
     characterTick();
   } else {
     const Palette& p = characterPalette();
+    useUiFont();
     spr.fillSprite(p.bg);
     spr.setTextColor(p.textDim, p.bg);
     spr.setTextSize(1);
     if (xferActive()) {
       uint32_t done = xferProgress(), total = xferTotal();
       spr.setCursor(8, 90);
-      spr.print("installing");
+      spr.print("установка");
       spr.setCursor(8, 102);
       spr.printf("%luK / %luK", done/1024, total/1024);
       int barW = W - 16;
@@ -1429,7 +1450,7 @@ void loop() {
       }
     } else {
       spr.setCursor(8, 100);
-      spr.print("no character loaded");
+      spr.print("пет не загружен");
     }
   }
   if (landscapeClock) {
