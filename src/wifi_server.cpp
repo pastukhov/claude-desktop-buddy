@@ -965,6 +965,9 @@ void ntpPollRtcSync() {
 
         M5.Rtc.SetTime(&tm);
         M5.Rtc.SetDate(&dt);
+        extern uint32_t _clkLastRead;
+        _clkLastRead = 0;   // force clockRefreshRtc() to re-read
+        dataMarkRtcValid();
         _ntpSynced = true;
         Serial.printf("[ntp] RTC synced: %02u:%02u:%02u %04d-%02u-%02u\n",
                       lt.tm_hour, lt.tm_min, lt.tm_sec,

@@ -62,10 +62,11 @@ inline const char* dataScenarioName() {
   return "нет";
 }
 
-// Set true once the bridge sends a time sync — until then the RTC may
-// hold whatever was on the coin cell (or 2000-01-01 if it lost power).
+// Set true once time is synced (via BLE bridge or NTP) — until then the RTC
+// may hold whatever was last written (or 2000-01-01 if it lost power).
 static bool _rtcValid = false;
 inline bool dataRtcValid() { return _rtcValid; }
+inline void dataMarkRtcValid() { _rtcValid = true; }
 
 static void _applyJson(const char* line, TamaState* out) {
   JsonDocument doc;

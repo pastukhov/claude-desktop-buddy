@@ -1479,7 +1479,7 @@ void loop() {
   bool clocking = displayMode == DISP_NORMAL
                && !menuOpen && !settingsOpen && !resetOpen && !inPrompt
                && tama.sessionsRunning == 0 && tama.sessionsWaiting == 0
-               && dataRtcValid() && _onUsb;
+               && dataRtcValid();
   debugClocking = clocking;
   debugRtcValid = dataRtcValid();
   debugUsbPower = _onUsb;
@@ -1594,6 +1594,7 @@ void loop() {
   // millis() not the cached `now`: wake() runs after `now` is captured,
   // so now - lastInteractMs underflows when a button is held → flicker.
   // No auto-off on USB power — clock face wants to stay visible while charging.
+  // On battery the screen dims normally; tap to wake and see the time.
   if (!screenOff && !inPrompt && !_onUsb
       && millis() - lastInteractMs > SCREEN_OFF_MS) {
     M5.Axp.SetLDO2(false);
