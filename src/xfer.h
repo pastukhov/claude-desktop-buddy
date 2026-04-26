@@ -73,6 +73,7 @@ void ownerSet(const char* name);
 const char* ownerName();
 #include "stats.h"
 #include "board_compat.h"
+#include "wifi_server.h"
 
 inline bool xferCommand(JsonDocument& doc) {
   const char* cmd = doc["cmd"];
@@ -99,6 +100,28 @@ inline bool xferCommand(JsonDocument& doc) {
   if (strcmp(cmd, "unpair") == 0) {
     bleClearBonds();
     _xAck("unpair", true);
+    return true;
+  }
+
+  if (strcmp(cmd, "wifi") == 0) {
+    // wifi command: {"cmd":"wifi","ssid":"...","pass":"..."} to save creds
+    const char* ssid = doc["ssid"];
+    const char* pass = doc["pass"];
+    bool ok = false;
+    if (ssid && strlen(ssid) > 0) {
+      extern bool wifiSaveCredentials(const char* ssid, const char* pass);
+      extern void wifiStart();
+      extern bool httpServerInit();
+      extern WifiState wifiState();
+      wifiSaveCredentials(ssid, pass);
+      // If WiFi is currently off or in AP mode, restart as STA
+      if (wifiState() == WIFI_ST_OFF || wifiState() == WIFI_ST_AP) {
+        wifiStart();
+        httpServerInit();
+      }
+      ok = true;
+    }
+    _xAck("wifi", ok);
     return true;
   }
 

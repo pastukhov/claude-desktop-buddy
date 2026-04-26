@@ -6,6 +6,7 @@
 #include "buddy.h"
 #include "buddy_common.h"
 #include "ui_cyr_font.h"
+#include "wifi_server.h"
 
 TFT_eSprite spr = TFT_eSprite(&M5.Lcd);
 
@@ -150,7 +151,7 @@ static void sendCmd(const char* json) {
   bleWrite((const uint8_t*)json, n);
   bleWrite((const uint8_t*)"\n", 1);
 }
-const uint8_t INFO_PAGES = 6;
+const uint8_t INFO_PAGES = 7;
 const uint8_t INFO_PG_BUTTONS = 1;
 const uint8_t INFO_PG_CREDITS = 5;
 
@@ -196,7 +197,18 @@ static void applySetting(uint8_t idx) {
       // hard-off someday, stop advertising via BLEDevice::getAdvertising().
       s.bt = !s.bt;
       break;
-    case 3: s.wifi = !s.wifi; break;   // stored only — no WiFi stack linked
+    case 3: {
+      bool wasOn = s.wifi;
+      s.wifi = !s.wifi;
+      if (s.wifi && !wasOn) {
+        wifiLoadCredentials();
+        wifiStart();  // загружает креды, запускает STA/AP + captive portal
+      } else if (!s.wifi && wasOn) {
+        httpServerStop();
+        wifiStop();
+      }
+      break;
+    }
     case 4: s.led = !s.led; break;
     case 5: s.hud = !s.hud; break;
     case 6: s.clockRot = (s.clockRot + 1) % 3; break;
@@ -287,7 +299,7 @@ static void drawSettings() {
   int mx = (W - mw) / 2, my = (H - mh) / 2;
   spr.fillRoundRect(mx, my, mw, mh, 4, PANEL);
   spr.drawRoundRect(mx, my, mw, mh, 4, p.textDim);
-  spr.setTextSize(1.45f);
+  spr.setTextSize(1);
   Settings& s = settings();
   bool vals[] = { s.sound, s.bt, s.wifi, s.led, s.hud };
   for (int i = 0; i < SETTINGS_N; i++) {
@@ -322,7 +334,7 @@ static void drawReset() {
   int mx = (W - mw) / 2, my = (H - mh) / 2;
   spr.fillRoundRect(mx, my, mw, mh, 4, PANEL);
   spr.drawRoundRect(mx, my, mw, mh, 4, HOT);
-  spr.setTextSize(1.45f);
+  spr.setTextSize(1);
   for (int i = 0; i < RESET_N; i++) {
     bool sel = (i == resetSel);
     spr.setTextColor(sel ? p.text : p.textDim, PANEL);
@@ -359,7 +371,7 @@ void drawMenu() {
   int mx = (W - mw) / 2, my = (H - mh) / 2;
   spr.fillRoundRect(mx, my, mw, mh, 4, PANEL);
   spr.drawRoundRect(mx, my, mw, mh, 4, p.textDim);
-  spr.setTextSize(1.45f);
+  spr.setTextSize(1);
   for (int i = 0; i < MENU_N; i++) {
     bool sel = (i == menuSel);
     spr.setTextColor(sel ? p.text : p.textDim, PANEL);
@@ -372,9 +384,13 @@ void drawMenu() {
 }
 
 static void actionApprove() {
-  char cmd[96];
-  snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}", tama.promptId);
-  sendCmd(cmd);
+  if (httpPermissionPending()) {
+    httpPermissionResolve(true);   // ответит в HTTP-соединение
+  } else {
+    char cmd[96];
+    snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"once\"}", tama.promptId);
+    sendCmd(cmd);
+  }
   responseSent = true;
   uint32_t tookS = (millis() - promptArrivedMs) / 1000;
   statsOnApproval(tookS);
@@ -383,9 +399,13 @@ static void actionApprove() {
 }
 
 static void actionDeny() {
-  char cmd[96];
-  snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"deny\"}", tama.promptId);
-  sendCmd(cmd);
+  if (httpPermissionPending()) {
+    httpPermissionResolve(false);  // ответит в HTTP-соединение
+  } else {
+    char cmd[96];
+    snprintf(cmd, sizeof(cmd), "{\"cmd\":\"permission\",\"id\":\"%s\",\"decision\":\"deny\"}", tama.promptId);
+    sendCmd(cmd);
+  }
   responseSent = true;
   statsOnDenial();
   beep(600, 60);
@@ -634,9 +654,9 @@ bool checkShake() {
 static uint8_t wrapInto(const char* in, char out[][24], uint8_t maxRows, uint8_t width);
 static int uiPadX() { return max(10, W / 24); }
 static int uiContentW() { return W - uiPadX() * 2; }
-static constexpr float UI_TEXT = 1.45f;
-static constexpr float UI_TEXT_SMALL = 1.2f;
-static constexpr int UI_LH = 15;
+static constexpr int UI_TEXT = 1;
+static constexpr int UI_TEXT_SMALL = 1;
+static constexpr int UI_LH = 17;
 
 static void useUiFont(DisplaySurface* tgt) {
   tgt->setFont(&UiCyr12);
@@ -668,7 +688,7 @@ void drawPasskey() {
   spr.setTextDatum(MC_DATUM);
   spr.drawString("СОПРЯЖЕНИЕ BLUETOOTH", W / 2, 48);
   spr.drawString("введите на компьютере", W / 2, H - 44);
-  spr.setTextSize(3.2f);
+  spr.setTextSize(3);
   spr.setTextColor(p.text, p.bg);
   char b[8]; snprintf(b, sizeof(b), "%06lu", (unsigned long)blePasskey());
   spr.drawString(b, W / 2, H / 2);
@@ -752,22 +772,21 @@ void drawInfo() {
     bool full = usb && vBat_mV > 4100 && iBat_mA < 10;
 
     spr.setTextColor(p.text, p.bg);
-    spr.setTextSize(2.0f);
+    spr.setTextSize(1);
     spr.setCursor(x, y);
     if (vBat_mV > 0) spr.printf("%d%%", pct);
     else spr.print("USB");
-    spr.setTextSize(1.0f);
     spr.setTextColor(full ? UI_GREEN : (charging ? HOT : p.textDim), p.bg);
-    spr.setCursor(x + 64, y + 4);
+    spr.setCursor(x + 40, y);
     if (vBat_mV > 0) spr.print(full ? "полон" : (charging ? "заряд" : (usb ? "usb" : "бат.")));
     else spr.print(usb ? "питание" : "внешн.");
-    y += 14;
+    y += 12;
 
     const int leftX = x;
     const int rightX = W / 2 + 2;
     int ly = y;
     int ry = y;
-    const int deviceLh = 10;
+    const int deviceLh = 12;
     auto kvDevice = [&](int colX, int& rowY, const char* key, const char* fmt, ...) {
       char b[24];
       va_list a; va_start(a, fmt); vsnprintf(b, sizeof(b), fmt, a); va_end(a);
@@ -817,7 +836,7 @@ void drawInfo() {
     bool linked = settings().bt && dataBtActive();
 
     spr.setTextColor(linked ? UI_GREEN : (settings().bt ? HOT : p.textDim), p.bg);
-    spr.setTextSize(2.2f);
+    spr.setTextSize(2);
     spr.setCursor(x, y);
     spr.print(linked ? "связь" : (settings().bt ? "поиск" : "выкл"));
     spr.setTextSize(UI_TEXT);
@@ -845,6 +864,57 @@ void drawInfo() {
       ln("> Аппаратный пет");
       y += 4;
       ln("далее автоподключение BLE");
+    }
+
+  } else if (infoPage == 5) {
+    _infoHeader(p, y, "WIFI", infoPage);
+    WifiState ws = wifiState();
+    bool hasCreds = wifiHasCredentials();
+    const char* statusStr;
+    uint16_t statusColor;
+
+    switch (ws) {
+      case WIFI_ST_CONNECTED:
+        statusStr = "подключен"; statusColor = UI_GREEN; break;
+      case WIFI_ST_CONNECTING:
+        statusStr = "подключение..."; statusColor = p.textDim; break;
+      case WIFI_ST_AP:
+        statusStr = "точка доступа"; statusColor = 0xFFA0; break;
+      default:
+        statusStr = "выкл"; statusColor = p.textDim; break;
+    }
+
+    spr.setTextColor(statusColor, p.bg);
+    spr.setTextSize(2);
+    spr.setCursor(x, y);
+    spr.print(statusStr);
+    spr.setTextSize(UI_TEXT);
+    y += 24;
+
+    const char* ip = wifiIpAddr();
+    if (ws == WIFI_ST_CONNECTED || ws == WIFI_ST_CONNECTING) {
+      spr.setTextColor(p.text, p.bg);
+      ln("IP: %s", ip);
+      // Show SSID
+      extern bool wifiLoadCredentials(wifi_creds_t* out);
+      wifi_creds_t creds;
+      if (wifiLoadCredentials(&creds)) {
+        spr.setTextColor(p.textDim, p.bg);
+        ln("SSID: %s", creds.ssid.c_str());
+      }
+    } else if (ws == WIFI_ST_AP) {
+      spr.setTextColor(p.text, p.bg);
+      ln("SSID: claude-buddy");
+      ln("IP: 192.168.4.1");
+      ln("Откройте http://192.168.4.1 для настройки");
+    } else if (hasCreds) {
+      spr.setTextColor(p.textDim, p.bg);
+      ln("есть сохраненная сеть");
+      ln("вкл в меню настроек");
+    } else {
+      spr.setTextColor(p.textDim, p.bg);
+      ln("нет сетей");
+      ln("настройте через captive portal");
     }
 
   } else {
@@ -923,7 +993,7 @@ static void drawApproval() {
   // Size 2 only if it fits one line (~10 chars at 12px on 135px screen)
   int toolLen = strlen(tama.promptTool);
   spr.setTextColor(p.text, p.bg);
-  spr.setTextSize(toolLen <= 10 ? 2.3f : UI_TEXT);
+  spr.setTextSize(toolLen <= 10 ? 2 : UI_TEXT);
   spr.setCursor(x, H - AREA + (toolLen <= 10 ? 22 : 24));
   spr.print(tama.promptTool);
   spr.setTextSize(UI_TEXT);
@@ -968,74 +1038,77 @@ static void tinyHeart(int x, int y, bool filled, uint16_t col) {
 
 static void drawPetStats(const Palette& p) {
   useUiFont();
-  const int TOP = 70;
+  const int TOP = 68;
   const int x = uiPadX();
-  const int right = W - uiPadX();
-  const int barX = x + 76;
+  const int barX = x + 78;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(UI_TEXT);
-  int y = TOP + 18;
+  spr.setTextSize(1);
+  int y = TOP + 22;
 
   spr.setTextColor(p.textDim, p.bg);
-  spr.setCursor(x, y - 2); spr.print("настр.");
+  spr.setCursor(x, y); spr.print("настр.");
   uint8_t mood = statsMoodTier();
   uint16_t moodCol = (mood >= 3) ? UI_RED : (mood >= 2) ? HOT : p.textDim;
-  for (int i = 0; i < 4; i++) tinyHeart(barX + i * 18, y + 2, i < mood, moodCol);
+  for (int i = 0; i < 4; i++) tinyHeart(barX + i * 18, y + 4, i < mood, moodCol);
 
   y += 24;
-  spr.setCursor(x, y - 2); spr.print("сытость");
+  spr.setCursor(x, y); spr.print("сытость");
   uint8_t fed = statsFedProgress();
   for (int i = 0; i < 10; i++) {
-    int px = barX - 10 + i * 12;
-    if (i < fed) spr.fillCircle(px, y + 1, 2, p.body);
-    else spr.drawCircle(px, y + 1, 2, p.textDim);
+    int px = barX - 6 + i * 11;
+    if (i < fed) spr.fillCircle(px, y + 4, 2, p.body);
+    else spr.drawCircle(px, y + 4, 2, p.textDim);
   }
 
   y += 24;
-  spr.setCursor(x, y - 2); spr.print("энергия");
+  spr.setCursor(x, y); spr.print("энергия");
   uint8_t en = statsEnergyTier();
   uint16_t enCol = (en >= 4) ? 0x07FF : (en >= 2) ? 0xFFE0 : HOT;
   for (int i = 0; i < 5; i++) {
-    int px = barX + i * 20;
-    if (i < en) spr.fillRect(px, y - 2, 9, 6, enCol);
-    else spr.drawRect(px, y - 2, 9, 6, p.textDim);
+    int px = barX + i * 18;
+    if (i < en) spr.fillRoundRect(px, y + 1, 11, 8, 2, enCol);
+    else spr.drawRoundRect(px, y + 1, 11, 8, 2, p.textDim);
   }
 
   y += 28;
-  spr.fillRoundRect(x, y - 2, 52, 14, 3, p.body);
+  spr.fillRoundRect(x, y, 54, 18, 3, p.body);
   spr.setTextColor(p.bg, p.body);
-  spr.setCursor(x + 8, y + 1); spr.printf("Ур %u", stats().level);
+  spr.setCursor(x + 8, y + 4); spr.printf("Ур %u", stats().level);
 
-  int col2 = W / 2 + 10;
-  y += 24;
+  const int statsTop = y + 28;
+  const int col2 = W / 2 + 8;
+  const int row = 18;
   spr.setTextColor(p.textDim, p.bg);
+
+  y = statsTop;
   spr.setCursor(x, y);
   spr.printf("разреш. %u", stats().approvals);
   spr.setCursor(col2, y);
   spr.printf("отказ   %u", stats().denials);
+
   uint32_t nap = stats().napSeconds;
-  spr.setCursor(x, y + 12);
-  spr.printf("сон     %luh%02lum", nap/3600, (nap/60)%60);
-  auto tokFmt = [&](const char* label, uint32_t v, int yPx) {
-    spr.setCursor(col2, yPx);
+  spr.setCursor(x, y + row);
+  spr.printf("сон %luh%02lum", nap/3600, (nap/60)%60);
+
+  auto tokFmt = [&](int colX, const char* label, uint32_t v, int yPx) {
+    spr.setCursor(colX, yPx);
     if (v >= 1000000)   spr.printf("%s%lu.%luM", label, v/1000000, (v/100000)%10);
     else if (v >= 1000) spr.printf("%s%lu.%luK", label, v/1000, (v/100)%10);
     else                spr.printf("%s%lu", label, v);
   };
-  tokFmt("токены ", stats().tokens, y + 12);
-  tokFmt("сегодня", tama.tokensToday, y + 24);
+  tokFmt(col2, "ток. ", stats().tokens, y + row);
 }
 
 static void drawPetHowTo(const Palette& p) {
   useUiFont();
-  const int TOP = 70;
+  const int TOP = 68;
   const int x = uiPadX();
   const int col2 = W / 2 + 8;
   spr.fillRect(0, TOP, W, H - TOP, p.bg);
-  spr.setTextSize(UI_TEXT);
-  int y = TOP + 18;
+  spr.setTextSize(1);
+  int y = TOP + 22;
   auto ln = [&](int colX, int& rowY, uint16_t c, const char* s) {
-    spr.setTextColor(c, p.bg); spr.setCursor(colX, rowY); spr.print(s); rowY += UI_LH;
+    spr.setTextColor(c, p.bg); spr.setCursor(colX, rowY); spr.print(s); rowY += 17;
   };
   int y2 = y;
 
@@ -1161,6 +1234,17 @@ void setup() {
   petNameLoad();
   buddyInit();
 
+  // WiFi: start if user enabled it (wifiStart loads creds internally)
+  wifiLoadCredentials();
+  if (settings().wifi) {
+    Serial.println("boot: starting WiFi...");
+    wifiStart();  // httpServerInit() is called inside wifiStart() — no duplicate
+    delay(100);   // let STA connect cycle run once
+    Serial.printf("boot: wifi state=%d\n", wifiState());
+  } else {
+    Serial.println("boot: WiFi disabled in settings, skipping");
+  }
+
   // BLE stays always-on; s.bt is stored as a preference only.
   spr.createSprite(W, H);
   characterInit(nullptr);  // scan /characters/ for whatever is installed
@@ -1176,7 +1260,7 @@ void setup() {
     useUiFont();
     spr.fillSprite(p.bg);
     spr.setTextDatum(MC_DATUM);
-    spr.setTextSize(2.4f);
+    spr.setTextSize(2);
     if (ownerName()[0]) {
       char line[40];
       snprintf(line, sizeof(line), "%s", ownerName());
@@ -1206,6 +1290,21 @@ void loop() {
   dataPoll(&tama);
   if (statsPollLevelUp()) triggerOneShot(P_CELEBRATE, 3000);
   baseState = derive(tama);
+
+  // WiFi: poll state machine and apply HTTP payloads to TamaState
+  wifiPoll();
+  httpApplyToTamaBridge(&tama);
+  {
+    static WifiState _lastWifiState = WIFI_ST_OFF;
+    WifiState ws = wifiState();
+    // On transition to connected, kick off NTP sync
+    if (ws == WIFI_ST_CONNECTED && _lastWifiState != WIFI_ST_CONNECTED) {
+      ntpSyncTime();
+    }
+    _lastWifiState = ws;
+    // Poll non-blocking RTC sync every loop (completes once NTP responds)
+    ntpPollRtcSync();
+  }
 
   // After waking the screen, hold sleep for 12s so users see the wake-up
   // animation. Urgent states (attention, celebrate, busy) override this.

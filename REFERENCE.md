@@ -222,3 +222,98 @@ nothing you'd mind overwritten.
 The BLE API is only available when the desktop apps are in developer mode
 (**Help → Troubleshooting → Enable Developer Mode**). It's intended for
 makers and developers and isn't an officially supported product feature.
+
+---
+
+# WiFi Direct Hooks
+
+An alternative transport that replaces the Python BLE bridge. The ESP32 runs
+an HTTP server; Claude Code hooks POST to it directly via a thin local proxy.
+
+```
+Claude Code hooks → localhost:9876 → buddy_proxy.py → WiFi → ESP32 HTTP server
+```
+
+## Setup
+
+### 1. Configure WiFi credentials on the device
+
+Enable WiFi in the settings menu on the device. On first boot without credentials
+the device starts a captive portal AP named `claude-buddy` — connect to it and
+open `http://192.168.4.1` to pick your network.
+
+To set credentials over Serial/BLE instead:
+```json
+{"cmd":"wifi","ssid":"MyNetwork","pass":"MyPassword"}
+```
+
+### 2. Start the proxy
+
+Claude Code blocks HTTP hooks to private IPs, so a local proxy is required:
+
+```bash
+# mDNS (works if avahi/mdns is running on your system):
+python3 tools/buddy_proxy.py
+
+# Or by IP (more reliable on Linux):
+python3 tools/buddy_proxy.py --target http://192.168.x.x
+```
+
+To run as a persistent systemd user service (auto-starts on login):
+```bash
+cp tools/claude-code-bridge.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now claude-code-bridge
+```
+
+The service file in `tools/` already points to `buddy_proxy.py`.
+
+### 3. Configure hooks
+
+Add `tools/claude-code-hooks.json` contents to `~/.claude/settings.json`
+(hooks already point to `localhost:9876`):
+
+```json
+{
+  "hooks": {
+    "SessionStart":     [{"hooks": [{"type":"http","url":"http://localhost:9876/session-start","async":true}]}],
+    "SessionEnd":       [{"hooks": [{"type":"http","url":"http://localhost:9876/session-end","async":true}]}],
+    "PreToolUse":       [{"hooks": [{"type":"http","url":"http://localhost:9876/pre-tool","async":true}]}],
+    "PostToolUse":      [{"hooks": [{"type":"http","url":"http://localhost:9876/post-tool","async":true}]}],
+    "PermissionRequest":[{"hooks": [{"type":"http","url":"http://localhost:9876/permission","timeout":120}]}],
+    "Notification":     [{"matcher":"permission_prompt","hooks":[{"type":"http","url":"http://localhost:9876/notification","async":true}]}],
+    "Stop":             [{"hooks": [{"type":"http","url":"http://localhost:9876/stop","async":true}]}]
+  }
+}
+```
+
+## HTTP endpoints
+
+All endpoints accept `POST` with `Content-Type: application/json`.
+
+| Path | Body fields | Effect |
+|------|-------------|--------|
+| `POST /session-start` | `session_id` | Resets session state |
+| `POST /session-end` | — | Clears session state |
+| `POST /pre-tool` | `tool_name`, `tool_input` | Sets running=true, adds entry |
+| `POST /post-tool` | `tool_name`, `tool_input` | Sets running=false, adds entry |
+| `POST /permission` | `tool_name`, `tool_input` | **Synchronous** — holds connection until user taps approve/deny on device |
+| `POST /notification` | — | Sets waiting=true |
+| `POST /stop` | — | Clears running/waiting |
+| `GET  /health` | — | Returns `{"status":"ok","wifi":"sta","ip":"..."}` |
+
+The `/permission` endpoint is synchronous: the HTTP connection stays open until
+the user taps the touchscreen. The response is:
+```json
+{"decision": {"behavior": "allow"}}   // or "deny"
+```
+
+## Entry formatting
+
+Tool calls are formatted as one-line entries on the device display:
+
+| Tool | Input field used | Example entry |
+|------|-----------------|---------------|
+| `Bash` | first word of `command` | `14:32 git` |
+| `Read`, `Write`, `Edit` | basename of `file_path` | `14:32 main.cpp` |
+| others | tool name | `14:32 Agent` |
